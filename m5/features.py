@@ -1,27 +1,6 @@
 import m5.config as cfg
 
 
-# def add_price_features(data):
-#     data["price_nunique"] = prices_gby.transform("nunique").astype("int8")
-#     data["item_nunique"] = data.groupby(
-#         ['store_id', 'sell_price'])['item_id'].transform('nunique').astype("int16")
-
-#     data['price_momentum'] = data['sell_price'] / data.groupby(
-#         ['store_id', 'item_id'])['sell_price'].transform(lambda x: x.shift(1))
-#     data['price_momentum_m'] = data['sell_price'] / data.groupby(
-#         ['store_id', 'item_id', 'month'])['sell_price'].transform('mean')
-#     data['price_momentum_y'] = data['sell_price'] / data.groupby(
-#         ['store_id', 'item_id', 'year'])['sell_price'].transform('mean')
-
-
-def build_target_vector(df, target, fh, drop=False):
-    for i in range(0, fh):
-        df[f"target_{fh-i}"] = df[target].shift(i).astype("float32")
-    if drop:
-        df = df.drop(columns=[target])
-    return df
-
-
 def build_lag_features(df, target, fh, n_lags):
     for lag in range(0, n_lags):
         df[f"{target}_lag_{lag + 1}"] = df["sales"].shift(fh + lag).astype("float32")
@@ -86,3 +65,16 @@ def add_mean_encoding(data):
     for lvl in levels:
         data[f'enc_mean_{lvl}'] = data.groupby(lvl)['sales'].transform('mean').astype("float32")
         data[f'enc_std_{lvl}'] = data.groupby(lvl)['sales'].transform('std').astype("float32")
+
+
+# def add_price_features(data):
+#     data["price_nunique"] = prices_gby.transform("nunique").astype("int8")
+#     data["item_nunique"] = data.groupby(
+#         ['store_id', 'sell_price'])['item_id'].transform('nunique').astype("int16")
+
+#     data['price_momentum'] = data['sell_price'] / data.groupby(
+#         ['store_id', 'item_id'])['sell_price'].transform(lambda x: x.shift(1))
+#     data['price_momentum_m'] = data['sell_price'] / data.groupby(
+#         ['store_id', 'item_id', 'month'])['sell_price'].transform('mean')
+#     data['price_momentum_y'] = data['sell_price'] / data.groupby(
+#         ['store_id', 'item_id', 'year'])['sell_price'].transform('mean')

@@ -1,6 +1,7 @@
 import pandas as pd
 import zipfile
 from m5.features import build_lag_features
+from m5.utils import get_columns
 import lightgbm as lgb
 
 
@@ -51,7 +52,7 @@ def pivot_longer_sales(sales):
 
 def remove_leading_zero_sales(data):
     cu_sales = data.groupby(["id"])["sales"].cumsum()
-    data = data[cu_sales != 0]
+    data = data[cu_sales > 0]
     return data
 
 
@@ -157,3 +158,56 @@ def prepare_dataset_binaries(data_dir, feature_names, categorical_features):
     )
     train.save_binary(str(data_dir / "train.bin"))
     val.save_binary(str(data_dir / "val.bin"))
+
+
+def agg_data(data, lvl, cols):
+    agg_level = {
+        1: ['d'],
+        2: ['state_id', 'd'],
+        3: ['store_id', 'd'],
+        4: ['cat_id', 'd'],
+        5: ['dept_id', 'd'],
+        6: ['state_id', 'cat_id', 'd'],
+        7: ['state_id', 'dept_id', 'd'],
+        8: ['store_id', 'cat_id', 'd'],
+        9: ['store_id', 'dept_id', 'd'],
+        10: ['item_id', 'd'],
+        11: ['item_id', 'state_id', 'd'],
+        12: ['item_id', 'store_id', 'd'],
+    }
+    
+    data_agg = data.groupby(agg_level[lvl])[cols].sum().reset_index()
+    return data_agg
+
+
+def prepare_agg_level(data_dir, df, lvl, cols):
+    df_agg = agg_data(df, lvl, cols)
+    id_cols = get_columns(df_agg, lambda x: x.endswith("id"))
+    df_agg.insert(0, "id", str(lvl))
+    for col in id_cols:
+        df_agg["id"] = df_agg["id"] + "-" + df_agg[col].apply(str)
+    df_agg = df_agg.drop(columns=id_cols)
+    df_agg["id"] = df_agg["id"].astype("category")
+    df_agg["d"] = df_agg["d"].astype("int16")
+    df_agg.to_parquet(data_dir / "temp" / f"df_agg_level_{lvl}.parquet")
+
+
+def prepare_all_agg_levels(data_dir, df, cols):
+    for lvl in range(1, 12 + 1):
+        prepare_agg_level(data_dir, df, lvl, cols)
+
+
+def bottom_up(data_dir, df, cols):
+    prepare_all_agg_levels(data_dir, df, cols)
+    levels = []
+    for lvl in range(1, 12 + 1):
+        df_agg = pd.read_parquet(data_dir / "temp" / f"df_agg_level_{lvl}.parquet")
+        levels.append(df_agg)
+    df_bu = pd.concat(levels)[["id", "d"] + cols]
+    return df_bu
+
+
+def prepare_train_bu(data_dir):
+    train = pd.read_parquet(data_dir / "train.parquet")
+    train_bu = bottom_up(data_dir, train, ["sales"])
+    train_bu.to_parquet(data_dir / "train_bu.parquet")
