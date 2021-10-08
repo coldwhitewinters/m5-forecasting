@@ -1,7 +1,7 @@
 import pandas as pd
 import zipfile
 from m5.features import build_lag_features
-from m5.utils import get_columns
+from m5.utils import get_columns, move_column
 import lightgbm as lgb
 
 
@@ -66,6 +66,11 @@ def merge_prices(data, prices):
     return data
 
 
+def add_dollar_sales(data):
+    data["dollar_sales"] = data["sales"] * data["sell_price"]
+    return data
+
+
 def base_data_cleanup(data):
     data["d"] = data["d"].str[2:].astype("int16")
     data = data.drop(columns=["wm_yr_wk"])
@@ -79,6 +84,11 @@ def base_data_cleanup(data):
 def prepare_base_data(data_dir, unzip=False):
     if unzip:
         unzip_data(data_dir)
+
+    output_dir = data_dir / "processed"
+    if not output_dir.exists():
+        output_dir.mkdir()
+
     sales, calendar, prices = load_data(data_dir)
     convert_dtypes(sales, calendar, prices)
     data = sales  # Alias
@@ -86,8 +96,9 @@ def prepare_base_data(data_dir, unzip=False):
     data = remove_leading_zero_sales(data)
     data = merge_calendar(data, calendar)
     data = merge_prices(data, prices)
+    data = add_dollar_sales(data)
     data = base_data_cleanup(data)
-    data.to_parquet(data_dir / "processed/base.parquet")
+    data.to_parquet(output_dir / "base.parquet")
 
 
 def category_to_int(data):
@@ -106,61 +117,7 @@ def category_to_int(data):
     data["snap_WI"] = data["snap_WI"].astype("int8")
 
 
-def move_target_to_first_col(data, target):
-    values = data[target]
-    data.drop(columns=[target], inplace=True)
-    data.insert(0, target, values)
-
-
-def drop_date(data):
-    data.drop(columns=["date"], inplace=True)
-
-
-def build_lags(data, target, step, lags):
-    dataset = data.groupby("id", group_keys=False).apply(
-        lambda df: build_lag_features(df, target, step, lags))
-    return dataset
-
-
-def prepare_dataset(data_dir, target, step, lags):
-    data = pd.read_parquet(data_dir / "base.parquet")
-    move_target_to_first_col(data, target)
-    drop_date(data)
-    category_to_int(data)
-    dataset = build_lags(data, target, step, lags)
-    dataset.to_csv(data_dir / "dataset.csv", index=False, header=False)
-    dataset.to_parquet(data_dir / "dataset.parquet")
-
-
-def prepare_train_val_split(data_dir, fh):
-    dataset = pd.read_parquet(data_dir / "dataset.parquet")
-    N = dataset.d.max()
-    train = dataset[(dataset.d <= N - fh)]
-    val = dataset[(dataset.d > N - fh)]
-    train.to_csv(data_dir / "train.csv", index=False, header=False)
-    train.to_parquet(data_dir / "train.parquet")
-    val.to_csv(data_dir / "val.csv", index=False, header=False)
-    val.to_parquet(data_dir / "val.parquet")
-
-
-def prepare_dataset_binaries(data_dir, feature_names, categorical_features):
-    train_path = str(data_dir / "train.csv")
-    val_path = str(data_dir / "val.csv")
-    train = lgb.Dataset(
-        train_path,
-        feature_name=feature_names,
-        categorical_feature=categorical_features,
-    )
-    val = lgb.Dataset(
-        val_path,
-        feature_name=feature_names,
-        reference=train,
-    )
-    train.save_binary(str(data_dir / "train.bin"))
-    val.save_binary(str(data_dir / "val.bin"))
-
-
-def agg_data(data, lvl, cols):
+def agg_data(data, lvl):
     agg_level = {
         1: ['d'],
         2: ['state_id', 'd'],
@@ -175,39 +132,137 @@ def agg_data(data, lvl, cols):
         11: ['item_id', 'state_id', 'd'],
         12: ['item_id', 'store_id', 'd'],
     }
-    
-    data_agg = data.groupby(agg_level[lvl])[cols].sum().reset_index()
+
+    data_agg = data.groupby(agg_level[lvl]).agg({
+        "sales": "sum",
+        "dollar_sales": "sum",
+    }).reset_index()
+
+    data_agg["d"] = data_agg["d"].astype("int16")
+    data_agg["sales"] = data_agg["sales"].astype("int32")
+    if "id" in data_agg.columns:
+        data_agg["id"] = data_agg["id"].astype("int16")
+    if "item_id" in data_agg.columns:
+        data_agg["item_id"] = data_agg["item_id"].astype("int16")
+    if "dept_id" in data_agg.columns:
+        data_agg["dept_id"] = data_agg["dept_id"].astype("int8")
+    if "cat_id" in data_agg.columns:
+        data_agg["cat_id"] = data_agg["cat_id"].astype("int8")
+    if "store_id" in data_agg.columns:
+        data_agg["store_id"] = data_agg["store_id"].astype("int8")
+    if "state_id" in data_agg.columns:
+        data_agg["state_id"] = data_agg["state_id"].astype("int8")
     return data_agg
 
 
-def prepare_agg_level(data_dir, df, lvl, cols):
-    df_agg = agg_data(df, lvl, cols)
-    id_cols = get_columns(df_agg, lambda x: x.endswith("id"))
-    df_agg.insert(0, "id", str(lvl))
-    for col in id_cols:
-        df_agg["id"] = df_agg["id"] + "-" + df_agg[col].apply(str)
-    df_agg = df_agg.drop(columns=id_cols)
-    df_agg["id"] = df_agg["id"].astype("category")
-    df_agg["d"] = df_agg["d"].astype("int16")
-    df_agg.to_parquet(data_dir / "temp" / f"df_agg_level_{lvl}.parquet")
+def prepare_agg_levels(data_dir):
+    level_12_cols = [
+        'item_id', 'store_id', 'd',
+        'sales', 'dollar_sales', 'wday', 'month', 'year',
+        'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2',
+        'snap_CA', 'snap_TX', 'snap_WI']
+
+    calendar_cols = [
+        'd', 'wday', 'month', 'year',
+        'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2',
+        'snap_CA', 'snap_TX', 'snap_WI']
+
+    input_file = data_dir / "processed/base.parquet"
+    output_dir = data_dir / "processed/levels"
+    if not output_dir.exists():
+        output_dir.mkdir()
+
+    print("Preparing agg level 12")
+    base_data = pd.read_parquet(input_file)
+    category_to_int(base_data)
+    base_data = base_data.drop(columns=["date", "sell_price"])
+    base_data = base_data.reset_index(drop=True)
+    base_data[level_12_cols].to_parquet(output_dir / "level-12.parquet")
+    calendar = base_data[calendar_cols].drop_duplicates()
+
+    for lvl in range(1, 12):
+        print(f"Preparing agg level {lvl}")
+        df_agg = agg_data(base_data, lvl)
+        df_agg = df_agg.merge(calendar, on=["d"])
+        df_agg.to_parquet(output_dir / "level-{lvl}.parquet")
 
 
-def prepare_all_agg_levels(data_dir, df, cols):
+def build_lags(data, target, step, lags):
+    id_cols = get_columns(data, lambda x: x.endswith("id"))
+    if not id_cols:
+        dataset = build_lag_features(data, target, step, lags)
+    else:
+        dataset = data.groupby(id_cols, group_keys=False).apply(
+            lambda df: build_lag_features(df, target, step, lags))
+    return dataset
+
+
+def prepare_datasets(data_dir, target, step, lags):
     for lvl in range(1, 12 + 1):
-        prepare_agg_level(data_dir, df, lvl, cols)
+        input_file = data_dir / f"processed/levels/level-{lvl}.parquet"
+        output_dir = data_dir / f"processed/datasets/{lvl}"
+        if not output_dir.exists():
+            output_dir.mkdir()
+        print(f"Preparing dataset level {lvl}")
+        data = pd.read_parquet(input_file)
+        move_column(data, target)
+        data.drop(columns=["dollar_sales"], inplace=True)
+        dataset = build_lags(data, target, step, lags)
+        dataset.to_csv(output_dir / "dataset.csv", index=False, header=False)
+        dataset.to_parquet(output_dir / "dataset.parquet")
 
 
-def bottom_up(data_dir, df, cols):
-    prepare_all_agg_levels(data_dir, df, cols)
-    levels = []
+def prepare_train_val_split(data_dir, fh):
     for lvl in range(1, 12 + 1):
-        df_agg = pd.read_parquet(data_dir / "temp" / f"df_agg_level_{lvl}.parquet")
-        levels.append(df_agg)
-    df_bu = pd.concat(levels)[["id", "d"] + cols]
-    return df_bu
+        print(f"Splitting dataset level {lvl}")
+        dataset = pd.read_parquet(data_dir / f"processed/datasets/{lvl}/dataset.parquet")
+        N = dataset.d.max()
+        train = dataset[(dataset.d <= N - fh)]
+        val = dataset[(dataset.d > N - fh)]
+        train.to_csv(data_dir / f"processed/datasets/{lvl}/train.csv", index=False, header=False)
+        train.to_parquet(data_dir / f"processed/datasets/{lvl}/train.parquet")
+        val.to_csv(data_dir / f"processed/datasets/{lvl}/val.csv", index=False, header=False)
+        val.to_parquet(data_dir / f"processed/datasets/{lvl}/val.parquet")
 
 
-def prepare_train_bu(data_dir):
-    train = pd.read_parquet(data_dir / "train.parquet")
-    train_bu = bottom_up(data_dir, train, ["sales"])
-    train_bu.to_parquet(data_dir / "train_bu.parquet")
+def prepare_dataset_binaries(data_dir, n_lags):
+    agg_level = {
+        1: ['d'],
+        2: ['state_id', 'd'],
+        3: ['store_id', 'd'],
+        4: ['cat_id', 'd'],
+        5: ['dept_id', 'd'],
+        6: ['state_id', 'cat_id', 'd'],
+        7: ['state_id', 'dept_id', 'd'],
+        8: ['store_id', 'cat_id', 'd'],
+        9: ['store_id', 'dept_id', 'd'],
+        10: ['item_id', 'd'],
+        11: ['item_id', 'state_id', 'd'],
+        12: ['item_id', 'store_id', 'd'],
+    }
+
+    calendar_features = [
+        'wday', 'month', 'year', 'event_name_1', 'event_type_1',
+        'event_name_2', 'event_type_2', 'snap_CA', 'snap_TX', 'snap_WI',
+    ]
+
+    lag_features = [f"sales_lag_{i}" for i in range(1, n_lags + 1)]
+
+    for lvl in range(1, 12 + 1):
+        feature_names = agg_level[lvl] + calendar_features + lag_features
+        categorical_features = agg_level[lvl] + calendar_features
+
+        train_path = str(data_dir / f"processed/datasets/{lvl}/train.csv")
+        val_path = str(data_dir / f"processed/datasets/{lvl}/val.csv")
+        train = lgb.Dataset(
+            train_path,
+            feature_name=feature_names,
+            categorical_feature=categorical_features,
+        )
+        val = lgb.Dataset(
+            val_path,
+            feature_name=feature_names,
+            reference=train,
+        )
+        train.save_binary(str(data_dir / f"processed/datasets/{lvl}/train.bin"))
+        val.save_binary(str(data_dir / f"processed/datasets/{lvl}/val.bin"))
