@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent.parent.resolve()
 DATA_DIR = ROOT_DIR / "data"
 MODEL_DIR = ROOT_DIR / "models"
+FCST_DIR = ROOT_DIR / "fcst"
+METRICS_DIR = ROOT_DIR / "metrics"
 
 # Parameters
 UNZIP = False

@@ -128,10 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Data
+# Project folders
 data/
-
-# Reference
 reference/
-
 

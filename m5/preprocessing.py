@@ -2,6 +2,7 @@ import pandas as pd
 import zipfile
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column
+from m5.definitions import AGG_LEVEL
 import lightgbm as lgb
 
 
@@ -118,22 +119,7 @@ def category_to_int(data):
 
 
 def agg_data(data, lvl):
-    agg_level = {
-        1: ['d'],
-        2: ['state_id', 'd'],
-        3: ['store_id', 'd'],
-        4: ['cat_id', 'd'],
-        5: ['dept_id', 'd'],
-        6: ['state_id', 'cat_id', 'd'],
-        7: ['state_id', 'dept_id', 'd'],
-        8: ['store_id', 'cat_id', 'd'],
-        9: ['store_id', 'dept_id', 'd'],
-        10: ['item_id', 'd'],
-        11: ['item_id', 'state_id', 'd'],
-        12: ['item_id', 'store_id', 'd'],
-    }
-
-    data_agg = data.groupby(agg_level[lvl]).agg({
+    data_agg = data.groupby(AGG_LEVEL[lvl]).agg({
         "sales": "sum",
         "dollar_sales": "sum",
     }).reset_index()
@@ -226,21 +212,6 @@ def prepare_train_val_split(data_dir, fh):
 
 
 def prepare_dataset_binaries(data_dir, n_lags):
-    agg_level = {
-        1: ['d'],
-        2: ['state_id', 'd'],
-        3: ['store_id', 'd'],
-        4: ['cat_id', 'd'],
-        5: ['dept_id', 'd'],
-        6: ['state_id', 'cat_id', 'd'],
-        7: ['state_id', 'dept_id', 'd'],
-        8: ['store_id', 'cat_id', 'd'],
-        9: ['store_id', 'dept_id', 'd'],
-        10: ['item_id', 'd'],
-        11: ['item_id', 'state_id', 'd'],
-        12: ['item_id', 'store_id', 'd'],
-    }
-
     calendar_features = [
         'wday', 'month', 'year', 'event_name_1', 'event_type_1',
         'event_name_2', 'event_type_2', 'snap_CA', 'snap_TX', 'snap_WI',
@@ -249,8 +220,8 @@ def prepare_dataset_binaries(data_dir, n_lags):
     lag_features = [f"sales_lag_{i}" for i in range(1, n_lags + 1)]
 
     for lvl in range(1, 12 + 1):
-        feature_names = agg_level[lvl] + calendar_features + lag_features
-        categorical_features = agg_level[lvl] + calendar_features
+        feature_names = AGG_LEVEL[lvl] + calendar_features + lag_features
+        categorical_features = AGG_LEVEL[lvl] + calendar_features
 
         train_path = str(data_dir / f"processed/datasets/{lvl}/train.csv")
         val_path = str(data_dir / f"processed/datasets/{lvl}/val.csv")
