@@ -7,7 +7,7 @@ def plot_fcst(data_dir, fcst_dir, level, key=None, plot_tail=True):
     agg_level = AGG_LEVEL[level][:-1]
     fcst = pd.read_parquet(fcst_dir / f"fcst-{level}.parquet")
     train = pd.read_parquet(data_dir / f"processed/datasets/{level}/train.parquet")
-    
+
     if key is None:
         key = tuple(0 for _ in range(len(agg_level)))
 

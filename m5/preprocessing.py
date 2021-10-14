@@ -88,7 +88,7 @@ def prepare_base_data(data_dir, unzip=False):
 
     output_dir = data_dir / "processed"
     if not output_dir.exists():
-        output_dir.mkdir()
+        output_dir.mkdir(parents=True)
 
     sales, calendar, prices = load_data(data_dir)
     convert_dtypes(sales, calendar, prices)
@@ -156,7 +156,7 @@ def prepare_agg_levels(data_dir):
     input_file = data_dir / "processed/base.parquet"
     output_dir = data_dir / "processed/levels"
     if not output_dir.exists():
-        output_dir.mkdir()
+        output_dir.mkdir(parents=True)
 
     print("Preparing agg level 12")
     base_data = pd.read_parquet(input_file)
@@ -170,7 +170,7 @@ def prepare_agg_levels(data_dir):
         print(f"Preparing agg level {lvl}")
         df_agg = agg_data(base_data, lvl)
         df_agg = df_agg.merge(calendar, on=["d"])
-        df_agg.to_parquet(output_dir / "level-{lvl}.parquet")
+        df_agg.to_parquet(output_dir / f"level-{lvl}.parquet")
 
 
 def build_lags(data, target, step, lags):
@@ -188,7 +188,7 @@ def prepare_datasets(data_dir, target, step, lags):
         input_file = data_dir / f"processed/levels/level-{lvl}.parquet"
         output_dir = data_dir / f"processed/datasets/{lvl}"
         if not output_dir.exists():
-            output_dir.mkdir()
+            output_dir.mkdir(parents=True)
         print(f"Preparing dataset level {lvl}")
         data = pd.read_parquet(input_file)
         move_column(data, target)

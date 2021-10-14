@@ -6,6 +6,7 @@ DATA_DIR = ROOT_DIR / "data"
 MODEL_DIR = ROOT_DIR / "models"
 FCST_DIR = ROOT_DIR / "fcst"
 METRICS_DIR = ROOT_DIR / "metrics"
+NOTEBOOKS_DIR = ROOT_DIR / "notebooks"
 
 # Parameters
 UNZIP = False
