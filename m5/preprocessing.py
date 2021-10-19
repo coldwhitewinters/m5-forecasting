@@ -178,70 +178,64 @@ def build_lags(data, target, step, lags):
     return dataset
 
 
-def prepare_datasets(data_dir, target, fh, lags):
-    for lvl in range(1, 12 + 1):
+def prepare_dataset(data_dir, target, fh, lags, level, step):
+    print(f"Preparing dataset for level {level} and step {step}")
+    input_file = data_dir / f"processed/levels/level-{level}.parquet"
+    output_dir = data_dir / f"processed/datasets/{level}/{step}"
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    data = pd.read_parquet(input_file)
+    move_column(data, target)
+    data.drop(columns=["dollar_sales"], inplace=True)
+    dataset = build_lags(data, target, step, lags)
+
+    N = dataset.d.max()
+    train = dataset.loc[dataset.d <= (N - fh), :]
+    val = dataset.loc[dataset.d > (N - fh), :]
+
+    train.to_parquet(output_dir / "train.parquet")
+    val.to_parquet(output_dir / "val.parquet")
+
+
+def prepare_all_datasets(data_dir, target, fh, lags):
+    for level in range(1, 12 + 1):
         for step in range(1, fh + 1):
-            print(f"Preparing dataset for level {lvl} and step {step}")
-            input_file = data_dir / f"processed/levels/level-{lvl}.parquet"
-            output_dir = data_dir / f"processed/datasets/{lvl}/{step}"
-            if not output_dir.exists():
-                output_dir.mkdir(parents=True)
-            data = pd.read_parquet(input_file)
-            move_column(data, target)
-            data.drop(columns=["dollar_sales"], inplace=True)
-            dataset = build_lags(data, target, step, lags)
-
-            N = dataset.d.max()
-            train = dataset[(dataset.d <= N - fh)]
-            val = dataset[(dataset.d > N - fh)]
-
-            train.to_parquet(output_dir / "train.parquet")
-            val.to_parquet(output_dir / "val.parquet")
+            prepare_dataset(data_dir, target, fh, lags, level, step)
 
 
-def prepare_train_val_split(data_dir, fh):
-    for lvl in range(1, 12 + 1):
+def prepare_dataset_binaries(data_dir, level, step):
+    input_dir = data_dir / f"processed/datasets/{level}/{step}"
+    feature_names = AGG_LEVEL[level] + CALENDAR_FEATURES + LAG_FEATURES
+    categorical_features = AGG_LEVEL[level] + CALENDAR_FEATURES
+
+    train_dataset = pd.read_parquet(input_dir / "train.parquet")
+    train_csv = input_dir / "train.csv"
+    train_dataset.to_csv(train_csv, index=False, header=False)
+    train = lgb.Dataset(
+        str(train_csv),
+        feature_name=feature_names,
+        categorical_feature=categorical_features)
+    train_bin = input_dir / "train.bin"
+    if train_bin.exists():
+        train_bin.unlink()
+    train.save_binary(str(train_bin))
+    train_csv.unlink()
+
+    val_dataset = pd.read_parquet(input_dir / "val.parquet")
+    val_csv = input_dir / "val.csv"
+    val_dataset.to_csv(val_csv, index=False, header=False)
+    val = lgb.Dataset(
+        str(val_csv),
+        feature_name=feature_names,
+        reference=train)
+    val_bin = input_dir / "val.bin"
+    if val_bin.exists():
+        val_bin.unlink()
+    val.save_binary(str(val_bin))
+    val_csv.unlink()
+
+
+def prepare_all_dataset_binaries(data_dir, fh):
+    for level in range(1, 12 + 1):
         for step in range(1, fh + 1):
-            print(f"Splitting dataset for level {lvl} and step {step}")
-            dataset = pd.read_parquet(data_dir / f"processed/datasets/{lvl}/{step}/dataset.parquet")
-            N = dataset.d.max()
-            train = dataset[(dataset.d <= N - fh)]
-            val = dataset[(dataset.d > N - fh)]
-            train.to_csv(data_dir / f"processed/datasets/{lvl}/{step}/train.csv", index=False, header=False)
-            train.to_parquet(data_dir / f"processed/datasets/{lvl}/{step}/train.parquet")
-            val.to_csv(data_dir / f"processed/datasets/{lvl}/{step}/val.csv", index=False, header=False)
-            val.to_parquet(data_dir / f"processed/datasets/{lvl}/{step}/val.parquet")
-
-
-def prepare_dataset_binaries(data_dir, fh):
-    for lvl in range(1, 12 + 1):
-        for step in range(1, fh + 1):
-            input_dir = data_dir / f"processed/datasets/{lvl}/{step}"
-            feature_names = AGG_LEVEL[lvl] + CALENDAR_FEATURES + LAG_FEATURES
-            categorical_features = AGG_LEVEL[lvl] + CALENDAR_FEATURES
-
-            train_dataset = pd.read_parquet(input_dir / "train.parquet")
-            train_csv = input_dir / "train.csv"
-            train_dataset.to_csv(train_csv, index=False, header=False)
-            train = lgb.Dataset(
-                str(train_csv),
-                feature_name=feature_names,
-                categorical_feature=categorical_features)
-            train_bin = input_dir / "train.bin"
-            if train_bin.exists():
-                train_bin.unlink()
-            train.save_binary(str(train_bin))
-            train_csv.unlink()
-
-            val_dataset = pd.read_parquet(input_dir / "val.parquet")
-            val_csv = input_dir / "val.csv"
-            val_dataset.to_csv(val_csv, index=False, header=False)
-            val = lgb.Dataset(
-                str(val_csv),
-                feature_name=feature_names,
-                reference=train)
-            val_bin = input_dir / "val.bin"
-            if val_bin.exists():
-                val_bin.unlink()
-            val.save_binary(str(val_bin))
-            val_csv.unlink()
+            prepare_dataset_binaries(data_dir, level, step)
