@@ -1,3 +1,5 @@
+import m5.config as cfg
+
 AGG_LEVEL = {
     1: ['d'],
     2: ['state_id', 'd'],
@@ -12,3 +14,12 @@ AGG_LEVEL = {
     11: ['item_id', 'state_id', 'd'],
     12: ['item_id', 'store_id', 'd'],
 }
+
+ID_COLS = ["item_id", "dept_id", "cat_id", "store_id", "state_id"]
+
+CALENDAR_FEATURES = [
+    'wday', 'month', 'year', 'event_name_1', 'event_type_1',
+    'event_name_2', 'event_type_2', 'snap_CA', 'snap_TX', 'snap_WI',
+]
+
+LAG_FEATURES = [f"sales_lag_{i}" for i in range(1, cfg.N_LAGS + 1)]

@@ -8,7 +8,7 @@ def accuracy(data_dir, fcst_dir, metrics_dir, level):
 
     data = pd.read_parquet(data_dir / f"processed/levels/level-{level}.parquet")
     fcst = pd.read_parquet(fcst_dir / f"fcst-{level}.parquet")
-    data = data.loc[data.d < 1886, agg_level + ["d", "sales", "dollar_sales"]]
+    data = data.loc[data.d < 1886, agg_level + ["d", "sales", "dollar_sales"]]  # Replace hard coded number
 
     if level == 1:
         accuracy_df = pd.DataFrame(index=[0])
@@ -21,7 +21,7 @@ def accuracy(data_dir, fcst_dir, metrics_dir, level):
         accuracy_df.to_csv(metrics_dir / f"accuracy-{level}.csv", index=False)
         return accuracy_df
 
-    total_dollar_sales = data.loc[data.d >= 1858, "dollar_sales"].sum()
+    total_dollar_sales = data.loc[data.d >= 1858, "dollar_sales"].sum()  # Replace hard coded number
     weights = data.loc[data.d >= 1858, :].groupby(agg_level)["dollar_sales"].agg(
         lambda x: x.sum() / total_dollar_sales).reset_index()
     weights = weights.rename(columns={"dollar_sales": "weights"})
