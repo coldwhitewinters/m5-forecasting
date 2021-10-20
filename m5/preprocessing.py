@@ -142,30 +142,33 @@ def agg_data(data, lvl):
 
 
 def prepare_agg_levels(data_dir):
+    input_file = data_dir / "processed/base.parquet"
+
     level_12_cols = [
         'item_id', 'store_id', 'd',
         'sales', 'dollar_sales', 'wday', 'month', 'year',
         'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2',
         'snap_CA', 'snap_TX', 'snap_WI']
 
-    input_file = data_dir / "processed/base.parquet"
-    output_dir = data_dir / "processed/levels"
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
-
     print("Preparing agg level 12")
     base_data = pd.read_parquet(input_file)
     category_to_int(base_data)
     base_data = base_data.drop(columns=["date", "sell_price"])
     base_data = base_data.reset_index(drop=True)
-    base_data[level_12_cols].to_parquet(output_dir / "level-12.parquet")
     calendar = base_data[["d"] + CALENDAR_FEATURES].drop_duplicates()
+    output_dir = data_dir / "processed/levels/12"
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True)
+    base_data[level_12_cols].to_parquet(output_dir / "data.parquet")
 
     for lvl in range(1, 12):
         print(f"Preparing agg level {lvl}")
         df_agg = agg_data(base_data, lvl)
         df_agg = df_agg.merge(calendar, on=["d"])
-        df_agg.to_parquet(output_dir / f"level-{lvl}.parquet")
+        output_dir = data_dir / f"processed/levels/{lvl}"
+        if not output_dir.exists():
+            output_dir.mkdir(parents=True)
+        df_agg.to_parquet(output_dir / "data.parquet")
 
 
 def build_lags(data, target, step, lags):
@@ -180,7 +183,7 @@ def build_lags(data, target, step, lags):
 
 def prepare_dataset(data_dir, target, fh, lags, level, step):
     print(f"Preparing dataset for level {level} and step {step}")
-    input_file = data_dir / f"processed/levels/level-{level}.parquet"
+    input_file = data_dir / f"processed/levels/{level}/data.parquet"
     output_dir = data_dir / f"processed/datasets/{level}/{step}"
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
@@ -208,27 +211,30 @@ def prepare_dataset_binaries(data_dir, level, step):
     feature_names = AGG_LEVEL[level] + CALENDAR_FEATURES + LAG_FEATURES
     categorical_features = AGG_LEVEL[level] + CALENDAR_FEATURES
 
-    train_dataset = pd.read_parquet(input_dir / "train.parquet")
+    train_parquet = input_dir / "train.parquet"
     train_csv = input_dir / "train.csv"
+    train_bin = input_dir / "train.bin"
+    train_dataset = pd.read_parquet(train_parquet)
     train_dataset.to_csv(train_csv, index=False, header=False)
     train = lgb.Dataset(
         str(train_csv),
         feature_name=feature_names,
         categorical_feature=categorical_features)
-    train_bin = input_dir / "train.bin"
     if train_bin.exists():
         train_bin.unlink()
     train.save_binary(str(train_bin))
     train_csv.unlink()
+    train_parquet.unlink()
 
-    val_dataset = pd.read_parquet(input_dir / "val.parquet")
+    val_parquet = input_dir / "val.parquet"
     val_csv = input_dir / "val.csv"
+    val_bin = input_dir / "val.bin"
+    val_dataset = pd.read_parquet(val_parquet)
     val_dataset.to_csv(val_csv, index=False, header=False)
     val = lgb.Dataset(
         str(val_csv),
         feature_name=feature_names,
         reference=train)
-    val_bin = input_dir / "val.bin"
     if val_bin.exists():
         val_bin.unlink()
     val.save_binary(str(val_bin))
