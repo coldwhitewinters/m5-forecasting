@@ -17,7 +17,7 @@ def train_step(data_dir, model_dir, level, step, params):
 
 def train_level(data_dir, model_dir, level, fh, params):
     print(f"Training model for level {level}")
-    for step in range(1, 1 + fh):
+    for step in range(1, fh + 1):
         train_step(data_dir, model_dir, level, step, params)
 
 
@@ -42,7 +42,7 @@ def predict_step(data_dir, model_dir, fcst_dir, level, step):
 
 def predict_level(data_dir, model_dir, fcst_dir, level, fh):
     print(f"Making predictions for level {level}")
-    for step in range(1, 1 + fh):
+    for step in range(1, fh + 1):
         predict_step(data_dir, model_dir, fcst_dir, level, step)
 
 

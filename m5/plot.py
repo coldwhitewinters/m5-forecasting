@@ -3,10 +3,14 @@ import matplotlib.pyplot as plt
 from m5.definitions import AGG_LEVEL
 
 
-def plot_fcst(data_dir, fcst_dir, level, key=None, plot_tail=True):
+def plot_fcst(data_dir, fcst_dir, level, step, key=None, plot_tail=True):
     agg_level = AGG_LEVEL[level][:-1]
-    fcst = pd.read_parquet(fcst_dir / f"fcst-{level}.parquet")
-    train = pd.read_parquet(data_dir / f"processed/datasets/{level}/train.parquet")
+    
+    fcst_file = fcst_dir / f"{level}/{step}/fcst.parquet"
+    fcst = pd.read_parquet(fcst_file)
+    
+    train_file = data_dir / f"processed/datasets/{level}/{step}/train.parquet"
+    train = pd.read_parquet(train_file)
 
     if key is None:
         key = tuple(0 for _ in range(len(agg_level)))
