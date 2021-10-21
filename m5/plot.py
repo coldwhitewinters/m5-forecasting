@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 from m5.definitions import AGG_LEVEL
 
 
-def plot_fcst(data_dir, fcst_dir, level, key=None, plot_tail=True):
+def plot_fcst(data_dir, fcst_dir, level, step="final", key=None, plot_tail=True):
     agg_level = AGG_LEVEL[level][:-1]
 
-    fcst_file = fcst_dir / f"{level}/final/fcst.parquet"
+    fcst_file = fcst_dir / f"{level}/{step}/fcst.parquet"
     fcst = pd.read_parquet(fcst_file)
 
     data_file = data_dir / f"processed/levels/{level}/data.parquet"

@@ -13,7 +13,6 @@ UNZIP = False
 TARGET = "sales"
 FH = 28
 N_LAGS = 14
-N_PARTITIONS = 16
 # ROLLING_WINDOWS = [7, 14, 28, 56, 168]
 # ROLLING_SHIFTS = [0, 7, 14]
 

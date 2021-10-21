@@ -131,4 +131,6 @@ dmypy.json
 # Project folders
 data/
 reference/
+fcst/
+models/
 
