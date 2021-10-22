@@ -3,13 +3,18 @@ import pandas as pd
 from m5.definitions import AGG_LEVEL
 
 
-def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, step="final"):
+def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, multi_step=True):
     print(f"Calculating accuracy for level {level}")
 
     agg_level = AGG_LEVEL[level][:-1]
     output_dir = metrics_dir / f"{level}"
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
+
+    if multi_step:
+        step = "final"
+    else:
+        step = 28
 
     data = pd.read_parquet(data_dir / f"processed/levels/{level}/data.parquet")
     fcst = pd.read_parquet(fcst_dir / f"{level}/{step}/fcst.parquet")
@@ -25,8 +30,8 @@ def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, step="final"):
         accuracy_df.to_csv(output_dir / "accuracy.csv", index=False)
         return accuracy_df
 
-    total_dollar_sales = data.loc[data.d > data.d.max() - 2 * fh, "dollar_sales"].sum()
-    weights = data.loc[data.d > data.d.max() - 2 * fh, :].groupby(agg_level)["dollar_sales"].agg(
+    total_dollar_sales = data.loc[data.d > data.d.max() - fh, "dollar_sales"].sum()
+    weights = data.loc[data.d > data.d.max() - fh, :].groupby(agg_level)["dollar_sales"].agg(
         lambda x: x.sum() / total_dollar_sales).reset_index()
     weights = weights.rename(columns={"dollar_sales": "weights"})
 
@@ -46,9 +51,9 @@ def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, step="final"):
     return accuracy_df
 
 
-def accuracy_all_levels(data_dir, fcst_dir, metrics_dir, fh, step="final"):
+def accuracy_all_levels(data_dir, fcst_dir, metrics_dir, fh, multi_step=True):
     for level in range(1, 12 + 1):
-        accuracy(data_dir, fcst_dir, metrics_dir, fh, level, step)
+        accuracy(data_dir, fcst_dir, metrics_dir, fh, level, multi_step)
 
 
 def collect_metrics(metrics_dir):

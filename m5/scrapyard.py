@@ -75,7 +75,7 @@ def add_mean_encoding(data):
 
 def prepare_train_val_split(data_dir, fh):
     for lvl in range(1, 12 + 1):
-        for step in range(1, fh + 1):
+        for step in STEP_RANGE:
             print(f"Splitting dataset for level {lvl} and step {step}")
             dataset = pd.read_parquet(data_dir / f"processed/datasets/{lvl}/{step}/dataset.parquet")
             N = dataset.d.max()

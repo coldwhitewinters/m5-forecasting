@@ -2,7 +2,7 @@ import zipfile
 import pandas as pd
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column
-from m5.definitions import AGG_LEVEL, CALENDAR_FEATURES, LAG_FEATURES
+from m5.definitions import AGG_LEVEL, CALENDAR_FEATURES, LAG_FEATURES, STEP_RANGE
 import lightgbm as lgb
 
 
@@ -11,10 +11,10 @@ def unzip_data(data_dir):
         zip.extractall(data_dir)
 
 
-def load_data(data_dir, type="train"):
-    if type == "train":
+def load_data(data_dir, task="train"):
+    if task == "train":
         sales = pd.read_csv(data_dir / "sales_train_validation.csv")
-    elif type == "test":
+    elif task == "test":
         sales = pd.read_csv(data_dir / "sales_train_evaluation.csv")
     calendar = pd.read_csv(data_dir / "calendar.csv")
     prices = pd.read_csv(data_dir / "sell_prices.csv")
@@ -82,7 +82,7 @@ def base_data_cleanup(data):
     return data
 
 
-def prepare_base_data(data_dir, unzip=False):
+def prepare_base_data(data_dir, unzip=False, task="train"):
     if unzip:
         unzip_data(data_dir)
 
@@ -90,7 +90,7 @@ def prepare_base_data(data_dir, unzip=False):
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
 
-    sales, calendar, prices = load_data(data_dir)
+    sales, calendar, prices = load_data(data_dir, task=task)
     convert_dtypes(sales, calendar, prices)
     data = sales  # Alias
     data = pivot_longer_sales(data)
@@ -202,7 +202,7 @@ def prepare_dataset(data_dir, target, fh, lags, level, step):
 
 def prepare_all_datasets(data_dir, target, fh, lags):
     for level in range(1, 12 + 1):
-        for step in range(1, fh + 1):
+        for step in STEP_RANGE:
             prepare_dataset(data_dir, target, fh, lags, level, step)
 
 
@@ -241,7 +241,7 @@ def prepare_dataset_binaries(data_dir, level, step):
     val_csv.unlink()
 
 
-def prepare_all_dataset_binaries(data_dir, fh):
+def prepare_all_dataset_binaries(data_dir):
     for level in range(1, 12 + 1):
-        for step in range(1, fh + 1):
+        for step in STEP_RANGE:
             prepare_dataset_binaries(data_dir, level, step)

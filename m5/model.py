@@ -1,6 +1,6 @@
 import pandas as pd
 import lightgbm as lgb
-from m5.definitions import AGG_LEVEL
+from m5.definitions import AGG_LEVEL, STEP_RANGE
 
 
 def train_step(data_dir, model_dir, level, step, params):
@@ -15,16 +15,16 @@ def train_step(data_dir, model_dir, level, step, params):
     model.save_model(str(output_dir / "model.txt"))
 
 
-def train_level(data_dir, model_dir, fh, level, params):
+def train_level(data_dir, model_dir, level, params):
     print(f"Training model for level {level}")
-    for step in range(1, fh + 1):
+    for step in STEP_RANGE:
         train_step(data_dir, model_dir, level, step, params)
 
 
-def train(data_dir, model_dir, fh, params):
+def train(data_dir, model_dir, params):
     print("Start training")
     for level in range(1, 12 + 1):
-        train_level(data_dir, model_dir, fh, level, params)
+        train_level(data_dir, model_dir, level, params)
 
 
 def predict_step(data_dir, model_dir, fcst_dir, level, step):
@@ -40,23 +40,23 @@ def predict_step(data_dir, model_dir, fcst_dir, level, step):
     fcst.to_parquet(output_dir / "fcst.parquet")
 
 
-def predict_level(data_dir, model_dir, fcst_dir, fh, level):
+def predict_level(data_dir, model_dir, fcst_dir, level):
     print(f"Making predictions for level {level}")
-    for step in range(1, fh + 1):
+    for step in STEP_RANGE:
         predict_step(data_dir, model_dir, fcst_dir, level, step)
 
 
-def predict(data_dir, model_dir, fcst_dir, fh):
+def predict(data_dir, model_dir, fcst_dir):
     print("Start predicting")
     for level in range(1, 12 + 1):
-        predict_level(data_dir, model_dir, fcst_dir, fh, level)
+        predict_level(data_dir, model_dir, fcst_dir, level)
 
 
-def compile_fcst(fcst_dir, fh):
+def compile_fcst(fcst_dir):
     for level in range(1, 12 + 1):
         print(f"Compiling forecast level {level}")
         fcst_list = []
-        for step in range(1, fh + 1):
+        for step in STEP_RANGE:
             print(step, end="\r")
             fcst_step = pd.read_parquet(fcst_dir / f"{level}/{step}/fcst.parquet")
             start = fcst_step.d.min()
@@ -64,7 +64,7 @@ def compile_fcst(fcst_dir, fh):
                 step_value = fcst_step.loc[fcst_step.d == start + step - 1, :]
             else:
                 step_value = fcst_step.groupby(AGG_LEVEL[level][:-1], group_keys=False).apply(
-                    lambda df: df.loc[df.d == start + step, :])
+                    lambda df: df.loc[df.d == start + step - 1, :])
             fcst_list.append(step_value)
         fcst_level = pd.concat(fcst_list, axis=0).sort_values(by=AGG_LEVEL[level])
         output_dir = fcst_dir / f"{level}/final"

@@ -10,7 +10,9 @@ NOTEBOOKS_DIR = ROOT_DIR / "notebooks"
 
 # Parameters
 UNZIP = False
+TASK = "train"
 TARGET = "sales"
+MULTI_STEP = False
 FH = 28
 N_LAGS = 14
 # ROLLING_WINDOWS = [7, 14, 28, 56, 168]

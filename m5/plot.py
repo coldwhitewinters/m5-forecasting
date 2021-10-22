@@ -3,8 +3,13 @@ import matplotlib.pyplot as plt
 from m5.definitions import AGG_LEVEL
 
 
-def plot_fcst(data_dir, fcst_dir, level, step="final", key=None, plot_tail=True):
+def plot_fcst(data_dir, fcst_dir, multi_step=True, level=1, key=None, plot_tail=True):
     agg_level = AGG_LEVEL[level][:-1]
+
+    if multi_step:
+        step = "final"
+    else:
+        step = 28
 
     fcst_file = fcst_dir / f"{level}/{step}/fcst.parquet"
     fcst = pd.read_parquet(fcst_file)
