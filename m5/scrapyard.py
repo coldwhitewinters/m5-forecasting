@@ -72,3 +72,17 @@ def add_mean_encoding(data):
 #         ['store_id', 'item_id', 'month'])['sell_price'].transform('mean')
 #     data['price_momentum_y'] = data['sell_price'] / data.groupby(
 #         ['store_id', 'item_id', 'year'])['sell_price'].transform('mean')
+
+def prepare_train_val_split(data_dir, fh):
+    for lvl in range(1, 12 + 1):
+        for step in STEP_RANGE:
+            print(f"Splitting dataset for level {lvl} and step {step}")
+            dataset = pd.read_parquet(data_dir / f"processed/datasets/{lvl}/{step}/dataset.parquet")
+            N = dataset.d.max()
+            train = dataset[(dataset.d <= N - fh)]
+            val = dataset[(dataset.d > N - fh)]
+            train.to_csv(data_dir / f"processed/datasets/{lvl}/{step}/train.csv", index=False, header=False)
+            train.to_parquet(data_dir / f"processed/datasets/{lvl}/{step}/train.parquet")
+            val.to_csv(data_dir / f"processed/datasets/{lvl}/{step}/val.csv", index=False, header=False)
+            val.to_parquet(data_dir / f"processed/datasets/{lvl}/{step}/val.parquet")
+
