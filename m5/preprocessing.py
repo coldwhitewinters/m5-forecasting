@@ -82,10 +82,7 @@ def base_data_cleanup(data):
     return data
 
 
-def prepare_base_data(data_dir, unzip=False, task="train"):
-    if unzip:
-        unzip_data(data_dir)
-
+def prepare_base_data(data_dir, task="train"):
     output_dir = data_dir / "processed"
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
