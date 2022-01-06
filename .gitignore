@@ -134,4 +134,9 @@ reference/
 fcst/
 models/
 backup/
+metrics/
+fcst/
 
+# RStudio
+.Rproj.user
+*.Rproj

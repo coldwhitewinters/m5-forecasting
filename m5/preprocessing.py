@@ -2,7 +2,7 @@ import zipfile
 import pandas as pd
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column
-from m5.definitions import AGG_LEVEL, CALENDAR_FEATURES, LAG_FEATURES, STEP_RANGE
+from m5.definitions import AGG_LEVEL, ID_COLS, CALENDAR_FEATURES, LAG_FEATURES, STEP_RANGE
 import lightgbm as lgb
 
 
@@ -152,6 +152,8 @@ def prepare_agg_levels(data_dir):
     category_to_int(base_data)
     base_data = base_data.drop(columns=["date", "sell_price"])
     base_data = base_data.reset_index(drop=True)
+    base_data.to_parquet(data_dir / "processed/base-numeric.parquet")
+    base_data[ID_COLS].to_parquet(data_dir / "processed/id-cols.parquet")
     calendar = base_data[["d"] + CALENDAR_FEATURES].drop_duplicates()
     output_dir = data_dir / "processed/levels/12"
     if not output_dir.exists():
@@ -159,13 +161,30 @@ def prepare_agg_levels(data_dir):
     base_data[level_12_cols].to_parquet(output_dir / "data.parquet")
 
     for lvl in range(1, 12):
-        print(f"Preparing agg level {lvl}")
+        print(f"Preparing agg level {lvl} ", end="\r")
         df_agg = agg_data(base_data, lvl)
         df_agg = df_agg.merge(calendar, on=["d"])
         output_dir = data_dir / f"processed/levels/{lvl}"
         if not output_dir.exists():
             output_dir.mkdir(parents=True)
         df_agg.to_parquet(output_dir / "data.parquet")
+    print("\nDone.")
+
+
+def prepare_store_data(data_dir):
+    data = pd.read_parquet(data_dir / "processed/levels/12/data.parquet",)
+    for store in data.store_id.unique():
+        print(f"Preparing store data {store}", end="\r")
+        output_dir = data_dir / f"processed/stores/{store}"
+        if not output_dir.exists():
+            output_dir.mkdir(parents=True)
+        store_data = data[data.store_id == store]
+        train_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[:-28])
+        val_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[-28:])
+        store_data.to_parquet(output_dir / "data.parquet")
+        train_data.to_parquet(output_dir / "train.parquet")
+        val_data.to_parquet(output_dir / "val.parquet")
+    print("\nDone.")
 
 
 def build_lags(data, target, step, lags):

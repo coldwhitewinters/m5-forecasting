@@ -3,21 +3,16 @@ import pandas as pd
 from m5.definitions import AGG_LEVEL
 
 
-def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, multi_step=True):
+def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model):
     print(f"Calculating accuracy for level {level}")
 
     agg_level = AGG_LEVEL[level][:-1]
-    output_dir = metrics_dir / f"{level}"
+    output_dir = metrics_dir / f"{model}/{level}"
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
 
-    if multi_step:
-        step = "final"
-    else:
-        step = 28
-
     data = pd.read_parquet(data_dir / f"processed/levels/{level}/data.parquet")
-    fcst = pd.read_parquet(fcst_dir / f"{level}/{step}/fcst.parquet")
+    fcst = pd.read_parquet(fcst_dir / f"{model}/{level}/fcst.parquet").astype("int64")
     data = data.loc[data.d <= data.d.max() - fh, agg_level + ["d", "sales", "dollar_sales"]]
     if level == 1:
         accuracy_df = pd.DataFrame(index=[0])
@@ -51,15 +46,15 @@ def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, multi_step=True):
     return accuracy_df
 
 
-def accuracy_all_levels(data_dir, fcst_dir, metrics_dir, fh, multi_step=True):
+def accuracy_all_levels(data_dir, fcst_dir, metrics_dir, fh, model):
     for level in range(1, 12 + 1):
-        accuracy(data_dir, fcst_dir, metrics_dir, fh, level, multi_step)
+        accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model)
 
 
-def collect_metrics(metrics_dir):
+def collect_metrics(metrics_dir, model):
     acc_d = {}
     for level in range(1, 12 + 1):
-        level_acc = pd.read_csv(metrics_dir / f"{level}/accuracy.csv")
+        level_acc = pd.read_csv(metrics_dir / f"{model}/{level}/accuracy.csv")
         wrmsse = level_acc["wrmsse"].sum()
         acc_d[level] = wrmsse
     acc = pd.DataFrame(acc_d, index=["wmrsse"])
