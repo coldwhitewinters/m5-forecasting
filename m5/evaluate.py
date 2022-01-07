@@ -1,19 +1,17 @@
 import numpy as np
 import pandas as pd
 from m5.definitions import AGG_LEVEL
+from m5.utils import create_dir
 
 
 def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model):
-    print(f"Calculating accuracy for level {level}")
-
     agg_level = AGG_LEVEL[level][:-1]
-    output_dir = metrics_dir / f"{model}/{level}"
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    output_dir = create_dir(metrics_dir / f"{model}/{level}")
 
     data = pd.read_parquet(data_dir / f"processed/levels/{level}/data.parquet")
-    fcst = pd.read_parquet(fcst_dir / f"{model}/{level}/fcst.parquet").astype("int64")
+    fcst = pd.read_parquet(fcst_dir / f"{model}/{level}/fcst.parquet").astype("int64")  # Avoid overflow
     data = data.loc[data.d <= data.d.max() - fh, agg_level + ["d", "sales", "dollar_sales"]]
+
     if level == 1:
         accuracy_df = pd.DataFrame(index=[0])
         accuracy_df["mse_naive_insample"] = data["sales"].agg(lambda x: (x.diff()**2).mean())
@@ -48,10 +46,12 @@ def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model):
 
 def accuracy_all_levels(data_dir, fcst_dir, metrics_dir, fh, model):
     for level in range(1, 12 + 1):
+        print(f"Calculating accuracy for level {level}   ", end="\r")
         accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model)
+    print("\nDone.")
 
 
-def collect_metrics(metrics_dir, model):
+def collect_level_metrics(metrics_dir, model):
     acc_d = {}
     for level in range(1, 12 + 1):
         level_acc = pd.read_csv(metrics_dir / f"{model}/{level}/accuracy.csv")
@@ -59,5 +59,9 @@ def collect_metrics(metrics_dir, model):
         acc_d[level] = wrmsse
     acc = pd.DataFrame(acc_d, index=["wmrsse"])
     acc["Average"] = acc.T.mean()
-    acc.to_csv(metrics_dir / "accuracy_final.csv", index=False)
+    acc.to_csv(metrics_dir / f"{model}/accuracy.csv", index=False)
     print(acc.T)
+
+
+def collect_model_metrics(metrics_dir):
+    pass

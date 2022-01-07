@@ -10,3 +10,9 @@ def move_column(data, col):
     values = data[col]
     data.drop(columns=[col], inplace=True)
     data.insert(0, col, values)
+
+
+def create_dir(path):
+    if not path.exists():
+        path.mkdir(parents=True)
+    return path
