@@ -208,11 +208,11 @@ def prepare_dataset(target, fh, lags, level, step):
 def prepare_all_datasets(target, fh, lags):
     for level in range(1, 12 + 1):
         for step in defs.STEP_RANGE:
-            prepare_dataset(ROOT_DIR / "data", target, fh, lags, level, step)
+            prepare_dataset(target, fh, lags, level, step)
 
 
-def prepare_dataset_binaries(data_dir, level, step):
-    input_dir = data_dir / f"processed/datasets/{level}/{step}"
+def prepare_dataset_binaries(level, step):
+    input_dir = ROOT_DIR / f"data/processed/datasets/{level}/{step}"
     feature_names = defs.AGG_LEVEL[level] + defs.CALENDAR_FEATURES + defs.LAG_FEATURES
     categorical_features = defs.AGG_LEVEL[level] + defs.CALENDAR_FEATURES
 
@@ -246,7 +246,7 @@ def prepare_dataset_binaries(data_dir, level, step):
     val_csv.unlink()
 
 
-def prepare_all_dataset_binaries(data_dir):
+def prepare_all_dataset_binaries():
     for level in range(1, 12 + 1):
         for step in defs.STEP_RANGE:
-            prepare_dataset_binaries(data_dir, level, step)
+            prepare_dataset_binaries(level, step)

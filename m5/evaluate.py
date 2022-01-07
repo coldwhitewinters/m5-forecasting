@@ -1,16 +1,17 @@
 import numpy as np
 import pandas as pd
+from m5.config import ROOT_DIR, FH
 from m5.definitions import AGG_LEVEL
 from m5.utils import create_dir
 
 
-def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model):
+def accuracy(level, model):
     agg_level = AGG_LEVEL[level][:-1]
-    output_dir = create_dir(metrics_dir / f"{model}/{level}")
+    output_dir = create_dir(ROOT_DIR / f"metrics/{model}/{level}")
 
-    data = pd.read_parquet(data_dir / f"processed/levels/{level}/data.parquet")
-    fcst = pd.read_parquet(fcst_dir / f"{model}/{level}/fcst.parquet").astype("int64")  # Avoid overflow
-    data = data.loc[data.d <= data.d.max() - fh, agg_level + ["d", "sales", "dollar_sales"]]
+    data = pd.read_parquet(ROOT_DIR / f"data/processed/levels/{level}/data.parquet")
+    fcst = pd.read_parquet(ROOT_DIR / f"fcst/{model}/{level}/fcst.parquet").astype("int64")  # Avoid overflow
+    data = data.loc[data.d <= data.d.max() - FH, agg_level + ["d", "sales", "dollar_sales"]]
 
     if level == 1:
         accuracy_df = pd.DataFrame(index=[0])
@@ -23,8 +24,8 @@ def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model):
         accuracy_df.to_csv(output_dir / "accuracy.csv", index=False)
         return accuracy_df
 
-    total_dollar_sales = data.loc[data.d > data.d.max() - fh, "dollar_sales"].sum()
-    weights = data.loc[data.d > data.d.max() - fh, :].groupby(agg_level)["dollar_sales"].agg(
+    total_dollar_sales = data.loc[data.d > data.d.max() - FH, "dollar_sales"].sum()
+    weights = data.loc[data.d > data.d.max() - FH, :].groupby(agg_level)["dollar_sales"].agg(
         lambda x: x.sum() / total_dollar_sales).reset_index()
     weights = weights.rename(columns={"dollar_sales": "weights"})
 
@@ -44,24 +45,24 @@ def accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model):
     return accuracy_df
 
 
-def accuracy_all_levels(data_dir, fcst_dir, metrics_dir, fh, model):
+def accuracy_all_levels(model):
     for level in range(1, 12 + 1):
         print(f"Calculating accuracy for level {level}   ", end="\r")
-        accuracy(data_dir, fcst_dir, metrics_dir, fh, level, model)
+        accuracy(level, model)
     print("\nDone.")
 
 
-def collect_level_metrics(metrics_dir, model):
+def collect_metrics(model):
     acc_d = {}
     for level in range(1, 12 + 1):
-        level_acc = pd.read_csv(metrics_dir / f"{model}/{level}/accuracy.csv")
+        level_acc = pd.read_csv(ROOT_DIR / f"metrics/{model}/{level}/accuracy.csv")
         wrmsse = level_acc["wrmsse"].sum()
         acc_d[level] = wrmsse
     acc = pd.DataFrame(acc_d, index=["wmrsse"])
     acc["Average"] = acc.T.mean()
-    acc.to_csv(metrics_dir / f"{model}/accuracy.csv", index=False)
+    acc.to_csv(ROOT_DIR / f"metrics/{model}/accuracy.csv", index=False)
     print(acc.T)
 
 
-def collect_model_metrics(metrics_dir):
+def collect_all_metrics():
     pass
