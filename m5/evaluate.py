@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-from m5.config import ROOT_DIR, FH
-from m5.definitions import AGG_LEVEL
+from m5.definitions import ROOT_DIR, FH, AGG_LEVEL
 from m5.utils import create_dir
 
 

@@ -2,8 +2,7 @@ import zipfile
 import pandas as pd
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column, create_dir
-from m5.config import ROOT_DIR
-from m5.definitions import AGG_LEVEL, ID_COLS, CALENDAR_FEATURES
+from m5.definitions import ROOT_DIR, AGG_LEVEL, ID_COLS, CALENDAR_FEATURES
 
 
 def unzip_data():

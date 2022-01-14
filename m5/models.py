@@ -7,8 +7,7 @@ import pickle
 import itertools
 from functools import partial
 
-from m5.config import ROOT_DIR
-from m5.definitions import AGG_LEVEL
+from m5.definitions import ROOT_DIR, AGG_LEVEL
 from m5.utils import create_dir
 
 
@@ -99,7 +98,7 @@ class BottomUp:
     def train(self, **kwargs):
         output_dir = create_dir(ROOT_DIR / f"models/{self.model_name}")
         models_d = dict()
-        for store in range(0, 10):
+        for store in range(0, 1):
             train_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/train.parquet")
             for item in train_data.item_id.unique():
                 print(f"Training model for item {item} and store {store}   ", end="\r")
@@ -121,7 +120,7 @@ class BottomUp:
         models_d = pickle.load(model_file)
         model_file.close()
         fcst_l = []
-        for store in range(0, 10):
+        for store in range(0, 1):
             val_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/val.parquet")
             for item in val_data.item_id.unique():
                 print(f"Making predictions for item {item} and store {store}   ", end="\r")
