@@ -1,10 +1,9 @@
 import zipfile
 import pandas as pd
-import lightgbm as lgb
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column, create_dir
 from m5.config import ROOT_DIR
-import m5.definitions as defs
+from m5.definitions import AGG_LEVEL, ID_COLS, CALENDAR_FEATURES
 
 
 def unzip_data():
@@ -114,7 +113,7 @@ def category_to_int(data):
 
 
 def agg_data(data, lvl):
-    data_agg = data.groupby(defs.AGG_LEVEL[lvl]).agg({
+    data_agg = data.groupby(AGG_LEVEL[lvl]).agg({
         "sales": "sum",
         "dollar_sales": "sum",
     }).reset_index()
@@ -150,8 +149,8 @@ def prepare_agg_levels():
     base_data = base_data.drop(columns=["date", "sell_price"])
     base_data = base_data.reset_index(drop=True)
     base_data.to_parquet(ROOT_DIR / "data/processed/base-numeric.parquet")
-    base_data[defs.ID_COLS].to_parquet(ROOT_DIR / "data/processed/id-cols.parquet")
-    calendar = base_data[["d"] + defs.CALENDAR_FEATURES].drop_duplicates()
+    base_data[ID_COLS].to_parquet(ROOT_DIR / "data/processed/id-cols.parquet")
+    calendar = base_data[["d"] + CALENDAR_FEATURES].drop_duplicates()
     output_dir = create_dir(ROOT_DIR / "data/processed/levels/12")
     base_data[level_12_cols].to_parquet(output_dir / "data.parquet")
 
@@ -203,50 +202,3 @@ def prepare_dataset(target, fh, lags, level, step):
 
     train.to_parquet(output_dir / "train.parquet")
     val.to_parquet(output_dir / "val.parquet")
-
-
-def prepare_all_datasets(target, fh, lags):
-    for level in range(1, 12 + 1):
-        for step in defs.STEP_RANGE:
-            prepare_dataset(target, fh, lags, level, step)
-
-
-def prepare_dataset_binaries(level, step):
-    input_dir = ROOT_DIR / f"data/processed/datasets/{level}/{step}"
-    feature_names = defs.AGG_LEVEL[level] + defs.CALENDAR_FEATURES + defs.LAG_FEATURES
-    categorical_features = defs.AGG_LEVEL[level] + defs.CALENDAR_FEATURES
-
-    train_parquet = input_dir / "train.parquet"
-    train_csv = input_dir / "train.csv"
-    train_bin = input_dir / "train.bin"
-    train_dataset = pd.read_parquet(train_parquet)
-    train_dataset.to_csv(train_csv, index=False, header=False)
-    train = lgb.Dataset(
-        str(train_csv),
-        feature_name=feature_names,
-        categorical_feature=categorical_features)
-    if train_bin.exists():
-        train_bin.unlink()
-    train.save_binary(str(train_bin))
-    train_csv.unlink()
-    train_parquet.unlink()
-
-    val_parquet = input_dir / "val.parquet"
-    val_csv = input_dir / "val.csv"
-    val_bin = input_dir / "val.bin"
-    val_dataset = pd.read_parquet(val_parquet)
-    val_dataset.to_csv(val_csv, index=False, header=False)
-    val = lgb.Dataset(
-        str(val_csv),
-        feature_name=feature_names,
-        reference=train)
-    if val_bin.exists():
-        val_bin.unlink()
-    val.save_binary(str(val_bin))
-    val_csv.unlink()
-
-
-def prepare_all_dataset_binaries():
-    for level in range(1, 12 + 1):
-        for step in defs.STEP_RANGE:
-            prepare_dataset_binaries(level, step)

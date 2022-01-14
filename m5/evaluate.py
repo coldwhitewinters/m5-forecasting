@@ -5,7 +5,7 @@ from m5.definitions import AGG_LEVEL
 from m5.utils import create_dir
 
 
-def accuracy(level, model):
+def level_accuracy(model, level):
     agg_level = AGG_LEVEL[level][:-1]
     output_dir = create_dir(ROOT_DIR / f"metrics/{model}/{level}")
 
@@ -45,24 +45,18 @@ def accuracy(level, model):
     return accuracy_df
 
 
-def accuracy_all_levels(model):
-    for level in range(1, 12 + 1):
-        print(f"Calculating accuracy for level {level}   ", end="\r")
-        accuracy(level, model)
-    print("\nDone.")
-
-
-def collect_metrics(model):
+def accuracy(model):
     acc_d = {}
     for level in range(1, 12 + 1):
-        level_acc = pd.read_csv(ROOT_DIR / f"metrics/{model}/{level}/accuracy.csv")
+        print(f"Calculating accuracy for level {level}   ", end="\r")
+        level_acc = level_accuracy(model, level)
         wrmsse = level_acc["wrmsse"].sum()
         acc_d[level] = wrmsse
     acc = pd.DataFrame(acc_d, index=["wmrsse"])
     acc["Average"] = acc.T.mean()
     acc.to_csv(ROOT_DIR / f"metrics/{model}/accuracy.csv", index=False)
-    print(acc.T)
+    return acc
 
 
-def collect_all_metrics():
+def accuracy_all_models():
     pass

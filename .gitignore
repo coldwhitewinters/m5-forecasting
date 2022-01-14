@@ -140,3 +140,4 @@ fcst/
 # RStudio
 .Rproj.user
 *.Rproj
+.Rhistory
