@@ -1,7 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from m5.config import ROOT_DIR
-from m5.definitions import AGG_LEVEL
+from m5.definitions import ROOT_DIR, AGG_LEVEL
 
 
 def plot_fcst(model, level=1, key=None, plot_tail=True):
