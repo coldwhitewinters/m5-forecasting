@@ -99,7 +99,7 @@ class BottomUp:
 
     def train(self, **kwargs):
         output_dir = create_dir(ROOT_DIR / f"models/{self.model_name}")
-        Parallel(n_jobs=self.n_jobs)(delayed(self.train_store(store, **kwargs)) for store in range(N_STORES))
+        Parallel(n_jobs=self.n_jobs)(delayed(self.train_store)(store, **kwargs) for store in range(N_STORES))
         print("Saving model...")
         file = output_dir / "model.pkl"
         with open(file, "wb") as f:
@@ -126,7 +126,7 @@ class BottomUp:
         self.models_d = pickle.load(model_file)
         model_file.close()
         self.fcst_l = []
-        Parallel(n_jobs=self.n_jobs)(delayed(self.predict_store(store, **kwargs)) for store in range(N_STORES))
+        Parallel(n_jobs=self.n_jobs)(delayed(self.predict_store)(store, **kwargs) for store in range(N_STORES))
         print("Saving prediction...")
         fcst_df = pd.concat(self.fcst_l)
         fcst_df.to_parquet(output_dir / "fcst.parquet")
