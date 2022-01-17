@@ -2,7 +2,7 @@ import zipfile
 import pandas as pd
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column, create_dir
-from m5.definitions import ROOT_DIR, AGG_LEVEL, ID_COLS, CALENDAR_FEATURES
+from m5.definitions import ROOT_DIR, FH, AGG_LEVEL, ID_COLS, CALENDAR_FEATURES
 
 
 def unzip_data():
@@ -142,7 +142,7 @@ def prepare_agg_levels():
         'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2',
         'snap_CA', 'snap_TX', 'snap_WI']
 
-    print("Preparing agg level 12 ", end="\r")
+    print("Preparing agg level 12")
     base_data = pd.read_parquet(input_file)
     category_to_int(base_data)
     base_data = base_data.drop(columns=["date", "sell_price"])
@@ -154,7 +154,7 @@ def prepare_agg_levels():
     base_data[level_12_cols].to_parquet(output_dir / "data.parquet")
 
     for lvl in range(11, 0, -1):
-        print(f"Preparing agg level {lvl} ", end="\r")
+        print(f"Preparing agg level {lvl}")
         df_agg = agg_data(base_data, lvl)
         df_agg = df_agg.merge(calendar, on=["d"])
         output_dir = create_dir(ROOT_DIR / f"data/processed/levels/{lvl}")
@@ -165,11 +165,11 @@ def prepare_agg_levels():
 def prepare_store_data():
     data = pd.read_parquet(ROOT_DIR / "data/processed/levels/12/data.parquet")
     for store in data.store_id.unique():
-        print(f"Preparing store data {store}", end="\r")
+        print(f"Preparing store data {store}")
         output_dir = create_dir(ROOT_DIR / f"data/processed/stores/{store}")
         store_data = data[data.store_id == store]
-        train_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[:-28])
-        val_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[-28:])
+        train_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[:-FH])
+        val_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[-FH:])
         store_data.to_parquet(output_dir / "data.parquet")
         train_data.to_parquet(output_dir / "train.parquet")
         val_data.to_parquet(output_dir / "val.parquet")

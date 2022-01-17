@@ -87,7 +87,15 @@ class ARIMA:
 
 
 class BottomUp:
-    def __init__(self, model_name, model_cls, model_params=None, regressors=None, n_jobs=None):
+    def __init__(
+        self,
+        model_name,
+        model_cls,
+        model_params=None,
+        regressors=None,
+        n_jobs=None,
+        parallel_backend="loky",
+    ):
         self.model_name = model_name
         self.model_cls = model_cls
         if model_params is None:
@@ -96,58 +104,71 @@ class BottomUp:
             self.model_params = model_params
         self.regressors = regressors
         self.n_jobs = n_jobs
+        self.parallel_backend = parallel_backend
 
     def train(self, **kwargs):
-        Parallel(n_jobs=self.n_jobs)(delayed(self.train_store)(store, **kwargs) for store in range(N_STORES))
+        print("Start training...")
+        output_dir = create_dir(ROOT_DIR / f"models/{self.model_name}")
+        model_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
+            delayed(self.train_store)(store, **kwargs) for store in range(N_STORES))
+        print("Saving models...")
+        file = output_dir / "model.pkl"
+        with open(file, "wb") as f:
+            pickle.dump(model_l, f)
         print("Done.")
 
     def train_store(self, store, **kwargs):
+        print(f"Training models for store {store}")
         train_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/train.parquet")
-        print(f"Training model for store {store}")
+        model_l = []
         for item in train_data.item_id.unique():
-            output_dir = create_dir(ROOT_DIR / f"models/{self.model_name}/{store}/{item}")
+            # print(f"Training model for store {store} and item {item}")
             train_item = train_data.loc[train_data.item_id == item, :]
             y = train_item.loc[:, "sales"].astype("float64").to_numpy()
             X = None
             if self.regressors is not None:
                 X = train_item.loc[:, self.regressors].astype("float64").to_numpy()
             model = self.model_cls(**self.model_params).train(y, X, **kwargs)
-            file = output_dir / "model.pkl"
-            with open(file, "wb") as f:
-                pickle.dump(model, f)
+            model_l.append(model)
+        return model_l
 
     def predict(self, fh, **kwargs):
+        print("Start predicting...")
         output_dir = create_dir(ROOT_DIR / f"fcst/{self.model_name}/12")
-        self.fcst_l = []
-        Parallel(n_jobs=self.n_jobs, require="sharedmem")(
+        fcst_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
             delayed(self.predict_store)(store, fh, **kwargs) for store in range(N_STORES))
-        print("Saving predictions...")
-        fcst_df = pd.concat(self.fcst_l)
+        print("Compiling predictions...")
+        fcst_df = pd.concat(fcst_l)
         fcst_df.to_parquet(output_dir / "fcst.parquet")
         self.bottom_up()
         print("Done.")
 
     def predict_store(self, store, fh, **kwargs):
-        val_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/val.parquet")
         print(f"Making predictions for store {store}")
+        val_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/val.parquet")
+        with open(ROOT_DIR / f"models/{self.model_name}/model.pkl", "rb") as model_file:
+            model = pickle.load(model_file)
+        fcst_l = []
         for item in val_data.item_id.unique():
+            # print(f"Making predictions for store {store} and item {item}")
             val_item = val_data.loc[val_data.item_id == item, :]
             X = None
             if self.regressors is not None:
                 X = val_item.loc[:, self.regressors].astype("float64").to_numpy()
             fcst = val_item.loc[:, AGG_LEVEL[12] + ["sales"]].copy()
-            with open(ROOT_DIR / f"models/{self.model_name}/{store}/{item}/model.pkl", "rb") as model_file:
-                model = pickle.load(model_file)
-            fcst["fcst"] = model.predict(fh, X, **kwargs)
-            self.fcst_l.append(fcst)
+            fcst["fcst"] = model[store][item].predict(fh, X, **kwargs)
+            fcst_l.append(fcst)
+        fcst_df = pd.concat(fcst_l)
+        return fcst_df
 
     def bottom_up(self):
+        print("Making bottom up predictions...")
         id_cols = pd.read_parquet(ROOT_DIR / "data/processed/id-cols.parquet")
         base_fcst = pd.read_parquet(ROOT_DIR / f"fcst/{self.model_name}/12/fcst.parquet")
         base_fcst = base_fcst.drop(columns=["item_id", "store_id"])
         base_fcst = id_cols.join(base_fcst, how="right")
         for level in range(1, 12):
-            print(f"Making predictions for level {level}")
+            # print(f"Making bottom up prediction for level {level}")
             output_dir = create_dir(ROOT_DIR / f"fcst/{self.model_name}/{level}")
             fcst = base_fcst.groupby(AGG_LEVEL[level])[["sales", "fcst"]].sum().reset_index()
             fcst.to_parquet(output_dir / "fcst.parquet")

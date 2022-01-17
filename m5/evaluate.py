@@ -47,7 +47,7 @@ def level_accuracy(model, level):
 def accuracy(model):
     acc_d = {}
     for level in range(1, 12 + 1):
-        print(f"Calculating accuracy for level {level}   ", end="\r")
+        # print(f"Calculating accuracy for level {level}")
         level_acc = level_accuracy(model, level)
         wrmsse = level_acc["wrmsse"].sum()
         acc_d[level] = wrmsse

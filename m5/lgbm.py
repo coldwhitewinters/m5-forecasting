@@ -1,11 +1,11 @@
 import pandas as pd
 import lightgbm as lgb
+from m5.utils import get_columns, move_column, create_dir
+from m5.features import build_lag_features
+from m5.config import LGBM_PARAMS
 from m5.definitions import (
     TARGET, N_LAGS, ROOT_DIR, FH,
     AGG_LEVEL, CALENDAR_FEATURES, LAG_FEATURES)
-from m5.config import LGBM_PARAMS
-from m5.utils import get_columns, move_column, create_dir
-from m5.features import build_lag_features
 
 
 def build_lags(data, target, step, lags):
@@ -72,18 +72,18 @@ def prepare_dataset_binaries(store, step):
 
 def prepare_all_datasets():
     for store in range(0, 10):
-        for step in range(7, 28 + 1, 7):
+        for step in range(7, FH + 1, 7):
             prepare_dataset(TARGET, N_LAGS, store, step)
 
 
 def prepare_all_dataset_binaries():
     for store in range(0, 10):
-        for step in range(7, 28 + 1, 7):
+        for step in range(7, FH + 1, 7):
             prepare_dataset_binaries(store, step)
 
 
 def train_step(store, step):
-    print(f"Training model for store {store} and step {step}", end="\r")
+    print(f"Training model for store {store} and step {step}")
     input_dir = ROOT_DIR / f"data/processed/datasets/{store}/{step}"
     output_dir = create_dir(ROOT_DIR / f"models/lgbm/{store}/{step}")
     train = lgb.Dataset(str(input_dir / "train.bin"))
@@ -93,8 +93,8 @@ def train_step(store, step):
 
 
 def train_store(store):
-    print(f"Training model for store {store}", end="\r")
-    for step in range(7, 28 + 1, 7):
+    print(f"Training model for store {store}")
+    for step in range(7, FH + 1, 7):
         train_step(store, step)
 
 
@@ -117,7 +117,7 @@ def predict_step(store, step):
 
 def predict_store(store):
     print(f"Making predictions for level {store}")
-    for step in range(7, 28 + 1, 7):
+    for step in range(7, FH + 1, 7):
         predict_step(store, step)
 
 
@@ -131,8 +131,7 @@ def compile_fcst():
     for store in range(0, 10):
         print(f"Compiling forecast store {store}")
         fcst_list = []
-        for step in range(7, 28 + 1, 7):
-            print(step, end="\r")
+        for step in range(7, FH + 1, 7):
             fcst_step = pd.read_parquet(ROOT_DIR / f"fcst/lgbm/{store}/{step}/fcst.parquet")
             start = fcst_step.d.min()
             if store == 1:
