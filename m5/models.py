@@ -2,14 +2,17 @@ import pandas as pd
 import numpy as np
 import pmdarima as pm
 from statsmodels.tsa.exponential_smoothing.ets import ETSModel
+import lightgbm as lgb
 
 import pickle
 import itertools
 from functools import partial
 from joblib import Parallel, delayed
 
-from m5.definitions import ROOT_DIR, AGG_LEVEL, N_STORES
+from m5.reconcile import bottom_up
 from m5.utils import create_dir
+from m5.definitions import (
+    ROOT_DIR, AGG_LEVEL, N_STORES, STEP_RANGE)
 
 
 class Naive:
@@ -140,7 +143,7 @@ class BottomUp:
         print("Compiling predictions...")
         fcst_df = pd.concat(fcst_l)
         fcst_df.to_parquet(output_dir / "fcst.parquet")
-        self.bottom_up()
+        bottom_up(self.model_name)
         print("Done.")
 
     def predict_store(self, store, fh, **kwargs):
@@ -161,14 +164,70 @@ class BottomUp:
         fcst_df = pd.concat(fcst_l)
         return fcst_df
 
-    def bottom_up(self):
-        print("Making bottom up predictions...")
-        id_cols = pd.read_parquet(ROOT_DIR / "data/processed/id-cols.parquet")
-        base_fcst = pd.read_parquet(ROOT_DIR / f"fcst/{self.model_name}/12/fcst.parquet")
-        base_fcst = base_fcst.drop(columns=["item_id", "store_id"])
-        base_fcst = id_cols.join(base_fcst, how="right")
-        for level in range(1, 12):
-            # print(f"Making bottom up prediction for level {level}")
-            output_dir = create_dir(ROOT_DIR / f"fcst/{self.model_name}/{level}")
-            fcst = base_fcst.groupby(AGG_LEVEL[level])[["sales", "fcst"]].sum().reset_index()
-            fcst.to_parquet(output_dir / "fcst.parquet")
+
+class LGBM:
+    def __init__(self, model_name, model_params):
+        self.model_name = model_name
+        self.model_params = model_params
+
+    def train_step(self, store, step):
+        print(f"Training model for store {store} and step {step}")
+        input_dir = ROOT_DIR / f"data/processed/datasets/{store}/{step}"
+        output_dir = create_dir(ROOT_DIR / f"models/{self.model_name}/{store}/{step}")
+        train = lgb.Dataset(str(input_dir / "train.lgbm"))
+        val = lgb.Dataset(str(input_dir / "val.lgbm"))
+        model = lgb.train(self.model_params, train, valid_sets=[val], verbose_eval=False)
+        model.save_model(str(output_dir / "model.txt"))
+
+    def train_store(self, store):
+        print(f"Training model for store {store}")
+        for step in STEP_RANGE:
+            self.train_step(store, step)
+
+    def train(self):
+        print("Start training...")
+        for store in range(N_STORES):
+            self.train_store(store)
+        print("Done.")
+
+    def predict_step(self, store, step):
+        print(f"Making predictions for level {store} and step {step}")
+        input_dir = ROOT_DIR / f"data/processed/datasets/{store}/{step}"
+        output_dir = create_dir(ROOT_DIR / f"fcst/{self.model_name}/12/{store}/{step}")
+        val = pd.read_parquet(input_dir / "val.parquet")
+        model = lgb.Booster(model_file=str(ROOT_DIR / f"models/{self.model_name}/{store}/{step}/model.txt"))
+        fcst = val[AGG_LEVEL[12] + ["sales"]].copy()
+        fcst["fcst"] = model.predict(val.drop(columns=["sales"]))
+        fcst.to_parquet(output_dir / "fcst.parquet")
+
+    def predict_store(self, store):
+        print(f"Making predictions for level {store}")
+        for step in STEP_RANGE:
+            self.predict_step(store, step)
+
+    def predict(self):
+        print("Start predicting...")
+        for store in range(N_STORES):
+            self.predict_store(store)
+        print("Compiling predictions...")
+        self.compile_fcst()
+        bottom_up(self.model_name)
+        print("Done.")
+
+    def compile_fcst(self):
+        output_dir = create_dir(ROOT_DIR / f"fcst/{self.model_name}/12")
+        fcst_l = []
+        for store in range(N_STORES):
+            print(f"Compiling forecast store {store}")
+            for step in STEP_RANGE:
+                fcst_step = pd.read_parquet(ROOT_DIR / f"fcst/{self.model_name}/12/{store}/{step}/fcst.parquet")
+                start = fcst_step.d.min()
+                interval = range(start + step - 7, start + step)
+                if store == 1:
+                    step_value = fcst_step.loc[fcst_step.d.isin(interval), :]
+                else:
+                    step_value = fcst_step.groupby(AGG_LEVEL[12][:-1], group_keys=False).apply(
+                        lambda df: df.loc[df.d.isin(interval), :])
+                fcst_l.append(step_value)
+        fcst_df = pd.concat(fcst_l, axis=0).sort_values(by=AGG_LEVEL[12])
+        fcst_df.to_parquet(output_dir / "fcst.parquet")

@@ -6,10 +6,10 @@ def select_columns(df, cond):
     return df.loc[:, get_columns(df, cond)]
 
 
-def move_column(data, col):
+def move_column(data, col, loc=0):
     values = data[col]
     data.drop(columns=[col], inplace=True)
-    data.insert(0, col, values)
+    data.insert(loc, col, values)
 
 
 def create_dir(path):

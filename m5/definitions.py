@@ -2,7 +2,6 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent.resolve()
 
-TARGET = "sales"
 FH = 28
 N_LAGS = 14
 N_STORES = 10
@@ -30,3 +29,5 @@ CALENDAR_FEATURES = [
 ]
 
 LAG_FEATURES = [f"sales_lag_{i}" for i in range(1, N_LAGS + 1)]
+
+STEP_RANGE = range(7, FH + 1, 7)

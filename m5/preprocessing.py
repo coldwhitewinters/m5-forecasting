@@ -2,7 +2,10 @@ import zipfile
 import pandas as pd
 from m5.features import build_lag_features
 from m5.utils import get_columns, move_column, create_dir
-from m5.definitions import ROOT_DIR, FH, AGG_LEVEL, ID_COLS, CALENDAR_FEATURES
+from m5.definitions import (
+    ROOT_DIR, FH, N_LAGS, N_STORES,
+    AGG_LEVEL, ID_COLS, CALENDAR_FEATURES, LAG_FEATURES, STEP_RANGE)
+from lightgbm import Dataset
 
 
 def unzip_data():
@@ -186,18 +189,63 @@ def build_lags(data, target, step, lags):
     return dataset
 
 
-def prepare_dataset(target, fh, lags, level, step):
-    print(f"Preparing dataset for level {level} and step {step}")
-    input_file = ROOT_DIR / f"data/processed/levels/{level}/data.parquet"
-    output_dir = create_dir(ROOT_DIR / f"data/processed/datasets/{level}/{step}")
+def prepare_dataset(target, lags, store, step):
+    print(f"Preparing dataset for store {store} and step {step}")
+    input_file = ROOT_DIR / f"data/processed/stores/{store}/data.parquet"
+    output_dir = create_dir(ROOT_DIR / f"data/processed/datasets/{store}/{step}")
     data = pd.read_parquet(input_file)
     move_column(data, target)
     data.drop(columns=["dollar_sales"], inplace=True)
     dataset = build_lags(data, target, step, lags)
 
     N = dataset.d.max()
-    train = dataset.loc[dataset.d <= (N - fh), :]
-    val = dataset.loc[dataset.d > (N - fh), :]
+    train = dataset.loc[dataset.d <= (N - FH), :]
+    val = dataset.loc[dataset.d > (N - FH), :]
 
     train.to_parquet(output_dir / "train.parquet")
     val.to_parquet(output_dir / "val.parquet")
+
+
+def prepare_dataset_binaries(store, step):
+    print(f"Preparing dataset binary for store {store} and step {step}")
+    input_dir = ROOT_DIR / f"data/processed/datasets/{store}/{step}"
+    feature_names = AGG_LEVEL[12] + CALENDAR_FEATURES + LAG_FEATURES
+    categorical_features = AGG_LEVEL[12] + CALENDAR_FEATURES
+
+    train_parquet = input_dir / "train.parquet"
+    train_csv = input_dir / "train.csv"
+    train_bin = input_dir / "train.lgbm"
+    train_dataset = pd.read_parquet(train_parquet)
+    train_dataset.to_csv(train_csv, index=False, header=False)
+    train = Dataset(
+        str(train_csv),
+        feature_name=feature_names,
+        categorical_feature=categorical_features)
+    if train_bin.exists():
+        train_bin.unlink()
+    train.save_binary(str(train_bin))
+
+    val_parquet = input_dir / "val.parquet"
+    val_csv = input_dir / "val.csv"
+    val_bin = input_dir / "val.lgbm"
+    val_dataset = pd.read_parquet(val_parquet)
+    val_dataset.to_csv(val_csv, index=False, header=False)
+    val = Dataset(
+        str(val_csv),
+        feature_name=feature_names,
+        reference=train)
+    if val_bin.exists():
+        val_bin.unlink()
+    val.save_binary(str(val_bin))
+
+
+def prepare_all_datasets():
+    for store in range(N_STORES):
+        for step in STEP_RANGE:
+            prepare_dataset("sales", N_LAGS, store, step)
+
+
+def prepare_all_dataset_binaries():
+    for store in range(N_STORES):
+        for step in STEP_RANGE:
+            prepare_dataset_binaries(store, step)
