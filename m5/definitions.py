@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent.parent.resolve()
 FH = 28
 N_LAGS = 14
 N_STORES = 10
+N_ITEMS = 3049
 
 AGG_LEVEL = {
     1: ['d'],

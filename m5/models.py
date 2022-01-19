@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 from m5.reconcile import bottom_up
 from m5.utils import create_dir
 from m5.definitions import (
-    ROOT_DIR, AGG_LEVEL, N_STORES, STEP_RANGE)
+    ROOT_DIR, AGG_LEVEL, N_STORES, N_ITEMS, STEP_RANGE)
 
 
 class Naive:
@@ -112,8 +112,7 @@ class BottomUp:
     def train(self, **kwargs):
         print("Start training...")
         output_dir = create_dir(ROOT_DIR / f"models/{self.model_name}")
-        model_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
-            delayed(self.train_store)(store, **kwargs) for store in range(N_STORES))
+        model_l = [self.train_store(store, **kwargs) for store in range(N_STORES)]
         print("Saving models...")
         file = output_dir / "model.pkl"
         with open(file, "wb") as f:
@@ -122,47 +121,50 @@ class BottomUp:
 
     def train_store(self, store, **kwargs):
         print(f"Training models for store {store}")
-        train_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/train.parquet")
-        model_l = []
-        for item in train_data.item_id.unique():
-            # print(f"Training model for store {store} and item {item}")
-            train_item = train_data.loc[train_data.item_id == item, :]
-            y = train_item.loc[:, "sales"].astype("float64").to_numpy()
-            X = None
-            if self.regressors is not None:
-                X = train_item.loc[:, self.regressors].astype("float64").to_numpy()
-            model = self.model_cls(**self.model_params).train(y, X, **kwargs)
-            model_l.append(model)
+        store_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/train.parquet")
+        model_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
+            delayed(self.train_item)(store_data, item, **kwargs) for item in range(N_ITEMS))
         return model_l
+
+    def train_item(self, store_data, item, **kwargs):
+        item_data = store_data.loc[store_data.item_id == item]
+        y = item_data.loc[:, "sales"].astype("float64").to_numpy()
+        X = None
+        if self.regressors is not None:
+            X = item_data.loc[:, self.regressors].astype("float64").to_numpy()
+        model = self.model_cls(**self.model_params).train(y, X, **kwargs)
+        return model
 
     def predict(self, fh, **kwargs):
         print("Start predicting...")
         output_dir = create_dir(ROOT_DIR / f"fcst/{self.model_name}/12")
-        fcst_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
-            delayed(self.predict_store)(store, fh, **kwargs) for store in range(N_STORES))
+        with open(ROOT_DIR / f"models/{self.model_name}/model.pkl", "rb") as model_file:
+            model = pickle.load(model_file)
+        fcst_l = [self.predict_store(store, model, fh, **kwargs) for store in range(N_STORES)]
         print("Compiling predictions...")
         fcst_df = pd.concat(fcst_l)
         fcst_df.to_parquet(output_dir / "fcst.parquet")
         bottom_up(self.model_name)
         print("Done.")
 
-    def predict_store(self, store, fh, **kwargs):
+    def predict_store(self, store, model, fh, **kwargs):
         print(f"Making predictions for store {store}")
-        val_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/val.parquet")
-        with open(ROOT_DIR / f"models/{self.model_name}/model.pkl", "rb") as model_file:
-            model = pickle.load(model_file)
-        fcst_l = []
-        for item in val_data.item_id.unique():
-            # print(f"Making predictions for store {store} and item {item}")
-            val_item = val_data.loc[val_data.item_id == item, :]
-            X = None
-            if self.regressors is not None:
-                X = val_item.loc[:, self.regressors].astype("float64").to_numpy()
-            fcst = val_item.loc[:, AGG_LEVEL[12] + ["sales"]].copy()
-            fcst["fcst"] = model[store][item].predict(fh, X, **kwargs)
-            fcst_l.append(fcst)
+        store_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/val.parquet")
+        store_model = model[store]
+        fcst_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
+            delayed(self.predict_item)(store_data, store_model, item, fh, **kwargs) for item in range(N_ITEMS))
         fcst_df = pd.concat(fcst_l)
         return fcst_df
+
+    def predict_item(self, store_data, store_model, item, fh, **kwargs):
+        # print(f"Making predictions for store {store} and item {item}")
+        item_data = store_data.loc[store_data.item_id == item, :]
+        X = None
+        if self.regressors is not None:
+            X = item_data.loc[:, self.regressors].astype("float64").to_numpy()
+        fcst = item_data.loc[:, AGG_LEVEL[12] + ["sales"]].copy()
+        fcst["fcst"] = store_model[item].predict(fh, X, **kwargs)
+        return fcst
 
 
 class LGBM:
