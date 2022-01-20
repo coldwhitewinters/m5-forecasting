@@ -151,13 +151,13 @@ class BottomUp:
         print(f"Making predictions for store {store}")
         store_data = pd.read_parquet(ROOT_DIR / f"data/processed/stores/{store}/val.parquet")
         store_model = model[store]
-        fcst_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
-            delayed(self.predict_item)(store_data, store_model, item, fh, **kwargs) for item in range(N_ITEMS))
+        # fcst_l = Parallel(n_jobs=self.n_jobs, backend=self.parallel_backend)(
+        #     delayed(self.predict_item)(store_data, store_model, item, fh, **kwargs) for item in range(N_ITEMS))
+        fcst_l = [self.predict_item(store_data, store_model, item, fh, **kwargs) for item in range(N_ITEMS)]
         fcst_df = pd.concat(fcst_l)
         return fcst_df
 
     def predict_item(self, store_data, store_model, item, fh, **kwargs):
-        # print(f"Making predictions for store {store} and item {item}")
         item_data = store_data.loc[store_data.item_id == item, :]
         X = None
         if self.regressors is not None:
