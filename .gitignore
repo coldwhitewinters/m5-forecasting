@@ -140,3 +140,6 @@ metrics/
 .Rproj.user
 *.Rproj
 .Rhistory
+
+# vscode
+.vscode/
