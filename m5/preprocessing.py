@@ -1,23 +1,25 @@
 import zipfile
 import pandas as pd
 from m5.features import build_lag_features
-from m5.utils import get_columns, move_column
-from m5.definitions import AGG_LEVEL, CALENDAR_FEATURES, LAG_FEATURES, STEP_RANGE
-import lightgbm as lgb
+from m5.utils import get_columns, move_column, create_dir
+from m5.definitions import (
+    ROOT_DIR, FH, N_LAGS, N_STORES,
+    AGG_LEVEL, ID_COLS, CALENDAR_FEATURES, LAG_FEATURES, STEP_RANGE)
+from lightgbm import Dataset
 
 
-def unzip_data(data_dir):
-    with zipfile.ZipFile(data_dir / "m5-forecasting-accuracy.zip") as zip:
-        zip.extractall(data_dir)
+def unzip_data():
+    with zipfile.ZipFile(ROOT_DIR / "data/m5-forecasting-accuracy.zip") as zip:
+        zip.extractall(ROOT_DIR / "data")
 
 
-def load_data(data_dir, task="train"):
+def load_data(task="train"):
     if task == "train":
-        sales = pd.read_csv(data_dir / "sales_train_validation.csv")
+        sales = pd.read_csv(ROOT_DIR / "data/sales_train_validation.csv")
     elif task == "test":
-        sales = pd.read_csv(data_dir / "sales_train_evaluation.csv")
-    calendar = pd.read_csv(data_dir / "calendar.csv")
-    prices = pd.read_csv(data_dir / "sell_prices.csv")
+        sales = pd.read_csv(ROOT_DIR / "data/sales_train_evaluation.csv")
+    calendar = pd.read_csv(ROOT_DIR / "data/calendar.csv")
+    prices = pd.read_csv(ROOT_DIR / "data/sell_prices.csv")
     return sales, calendar, prices
 
 
@@ -82,12 +84,9 @@ def base_data_cleanup(data):
     return data
 
 
-def prepare_base_data(data_dir, task="train"):
-    output_dir = data_dir / "processed"
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
-
-    sales, calendar, prices = load_data(data_dir, task=task)
+def prepare_base_data(task="train"):
+    output_dir = create_dir(ROOT_DIR / "data/processed")
+    sales, calendar, prices = load_data(task)
     convert_dtypes(sales, calendar, prices)
     data = sales  # Alias
     data = pivot_longer_sales(data)
@@ -138,9 +137,8 @@ def agg_data(data, lvl):
     return data_agg
 
 
-def prepare_agg_levels(data_dir):
-    input_file = data_dir / "processed/base.parquet"
-
+def prepare_agg_levels():
+    input_file = ROOT_DIR / "data/processed/base.parquet"
     level_12_cols = [
         'item_id', 'store_id', 'd',
         'sales', 'dollar_sales', 'wday', 'month', 'year',
@@ -152,20 +150,33 @@ def prepare_agg_levels(data_dir):
     category_to_int(base_data)
     base_data = base_data.drop(columns=["date", "sell_price"])
     base_data = base_data.reset_index(drop=True)
+    base_data.to_parquet(ROOT_DIR / "data/processed/base-numeric.parquet")
+    base_data[ID_COLS].to_parquet(ROOT_DIR / "data/processed/id-cols.parquet")
     calendar = base_data[["d"] + CALENDAR_FEATURES].drop_duplicates()
-    output_dir = data_dir / "processed/levels/12"
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+    output_dir = create_dir(ROOT_DIR / "data/processed/levels/12")
     base_data[level_12_cols].to_parquet(output_dir / "data.parquet")
 
-    for lvl in range(1, 12):
+    for lvl in range(11, 0, -1):
         print(f"Preparing agg level {lvl}")
         df_agg = agg_data(base_data, lvl)
         df_agg = df_agg.merge(calendar, on=["d"])
-        output_dir = data_dir / f"processed/levels/{lvl}"
-        if not output_dir.exists():
-            output_dir.mkdir(parents=True)
+        output_dir = create_dir(ROOT_DIR / f"data/processed/levels/{lvl}")
         df_agg.to_parquet(output_dir / "data.parquet")
+    print("\nDone.")
+
+
+def prepare_store_data():
+    data = pd.read_parquet(ROOT_DIR / "data/processed/levels/12/data.parquet")
+    for store in data.store_id.unique():
+        print(f"Preparing store data {store}")
+        output_dir = create_dir(ROOT_DIR / f"data/processed/stores/{store}")
+        store_data = data[data.store_id == store]
+        train_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[:-FH])
+        val_data = store_data.groupby(["item_id", "store_id"], group_keys=False).apply(lambda df: df.iloc[-FH:])
+        store_data.to_parquet(output_dir / "data.parquet")
+        train_data.to_parquet(output_dir / "train.parquet")
+        val_data.to_parquet(output_dir / "val.parquet")
+    print("\nDone.")
 
 
 def build_lags(data, target, step, lags):
@@ -178,67 +189,63 @@ def build_lags(data, target, step, lags):
     return dataset
 
 
-def prepare_dataset(data_dir, target, fh, lags, level, step):
-    print(f"Preparing dataset for level {level} and step {step}")
-    input_file = data_dir / f"processed/levels/{level}/data.parquet"
-    output_dir = data_dir / f"processed/datasets/{level}/{step}"
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True)
+def prepare_dataset(target, lags, store, step):
+    print(f"Preparing dataset for store {store} and step {step}")
+    input_file = ROOT_DIR / f"data/processed/stores/{store}/data.parquet"
+    output_dir = create_dir(ROOT_DIR / f"data/processed/datasets/{store}/{step}")
     data = pd.read_parquet(input_file)
     move_column(data, target)
     data.drop(columns=["dollar_sales"], inplace=True)
     dataset = build_lags(data, target, step, lags)
 
     N = dataset.d.max()
-    train = dataset.loc[dataset.d <= (N - fh), :]
-    val = dataset.loc[dataset.d > (N - fh), :]
+    train = dataset.loc[dataset.d <= (N - FH), :]
+    val = dataset.loc[dataset.d > (N - FH), :]
 
     train.to_parquet(output_dir / "train.parquet")
     val.to_parquet(output_dir / "val.parquet")
 
 
-def prepare_all_datasets(data_dir, target, fh, lags):
-    for level in range(1, 12 + 1):
-        for step in STEP_RANGE:
-            prepare_dataset(data_dir, target, fh, lags, level, step)
-
-
-def prepare_dataset_binaries(data_dir, level, step):
-    input_dir = data_dir / f"processed/datasets/{level}/{step}"
-    feature_names = AGG_LEVEL[level] + CALENDAR_FEATURES + LAG_FEATURES
-    categorical_features = AGG_LEVEL[level] + CALENDAR_FEATURES
+def prepare_dataset_binaries(store, step):
+    print(f"Preparing dataset binary for store {store} and step {step}")
+    input_dir = ROOT_DIR / f"data/processed/datasets/{store}/{step}"
+    feature_names = AGG_LEVEL[12] + CALENDAR_FEATURES + LAG_FEATURES
+    categorical_features = AGG_LEVEL[12] + CALENDAR_FEATURES
 
     train_parquet = input_dir / "train.parquet"
     train_csv = input_dir / "train.csv"
-    train_bin = input_dir / "train.bin"
+    train_bin = input_dir / "train.lgbm"
     train_dataset = pd.read_parquet(train_parquet)
     train_dataset.to_csv(train_csv, index=False, header=False)
-    train = lgb.Dataset(
+    train = Dataset(
         str(train_csv),
         feature_name=feature_names,
         categorical_feature=categorical_features)
     if train_bin.exists():
         train_bin.unlink()
     train.save_binary(str(train_bin))
-    train_csv.unlink()
-    train_parquet.unlink()
 
     val_parquet = input_dir / "val.parquet"
     val_csv = input_dir / "val.csv"
-    val_bin = input_dir / "val.bin"
+    val_bin = input_dir / "val.lgbm"
     val_dataset = pd.read_parquet(val_parquet)
     val_dataset.to_csv(val_csv, index=False, header=False)
-    val = lgb.Dataset(
+    val = Dataset(
         str(val_csv),
         feature_name=feature_names,
         reference=train)
     if val_bin.exists():
         val_bin.unlink()
     val.save_binary(str(val_bin))
-    val_csv.unlink()
 
 
-def prepare_all_dataset_binaries(data_dir):
-    for level in range(1, 12 + 1):
+def prepare_all_datasets():
+    for store in range(N_STORES):
         for step in STEP_RANGE:
-            prepare_dataset_binaries(data_dir, level, step)
+            prepare_dataset("sales", N_LAGS, store, step)
+
+
+def prepare_all_dataset_binaries():
+    for store in range(N_STORES):
+        for step in STEP_RANGE:
+            prepare_dataset_binaries(store, step)

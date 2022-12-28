@@ -1,4 +1,11 @@
-import m5.config as cfg
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).parent.parent.resolve()
+
+FH = 28
+N_LAGS = 14
+N_STORES = 10
+N_ITEMS = 3049
 
 AGG_LEVEL = {
     1: ['d'],
@@ -22,9 +29,6 @@ CALENDAR_FEATURES = [
     'event_name_2', 'event_type_2', 'snap_CA', 'snap_TX', 'snap_WI',
 ]
 
-LAG_FEATURES = [f"sales_lag_{i}" for i in range(1, cfg.N_LAGS + 1)]
+LAG_FEATURES = [f"sales_lag_{i}" for i in range(1, N_LAGS + 1)]
 
-if cfg.MULTI_STEP:
-    STEP_RANGE = range(1, cfg.FH + 1)
-else:
-    STEP_RANGE = [28]
+STEP_RANGE = range(7, FH + 1, 7)
